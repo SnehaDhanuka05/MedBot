@@ -183,19 +183,14 @@ If a key was previously committed or exposed in the browser bundle, **rotate it*
                             │                       │
                             ▼                       ▼
                     ┌───────────────────────────────────┐
-                    │        Gemini API Prompt          │
-                    │  "User clicked {bodyPart} and     │
-                    │   said: {symptoms}..."            │
+                    │     POST /api/chat (proxy)        │
+                    │  { bodyPart, userText }           │
                     └───────────────┬───────────────────┘
                                     │
                                     ▼
                     ┌───────────────────────────────────┐
-                    │     Gemini 2.0 Flash Response     │
-                    │  {                                │
-                    │    educational_summary: "...",    │
-                    │    wellness_tips: ["...", "..."], │
-                    │    disclaimer: "..."              │
-                    │  }                                │
+                    │  server/chatHandler.js            │
+                    │  Build prompt → Gemini 2.0 Flash  │
                     └───────────────┬───────────────────┘
                                     │
                           ┌─────────┴─────────┐
