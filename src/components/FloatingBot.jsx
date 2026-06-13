@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageCircle,
@@ -18,15 +18,25 @@ import { useAppContext } from '../context/AppContext';
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || '');
 
 export default function FloatingBot() {
-  const { isAgreed, selectedBodyPart } = useAppContext();
+  const {
+    isAgreed,
+    selectedBodyPart,
+    painLevel,
+    issueDescription,
+    setIssueDescription,
+    savedSymptoms,
+    analysisRequest,
+    setAnalysisRequest,
+    setSavedSymptoms,
+    isListening,
+    startListening,
+    stopListening,
+  } = useAppContext();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
-  const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const recognitionRef = useRef(null);
   const chatEndRef = useRef(null);
   const synthRef = useRef(window.speechSynthesis);
 
@@ -41,67 +51,12 @@ export default function FloatingBot() {
         {
           role: 'bot',
           content:
-            "Hello! I'm **Somatic**, your educational health companion. 🩺\n\nClick on a body part (head, chest, or stomach) on the 3D model, then tell me your symptoms using the microphone or type them below.\n\n*Remember: I'm an AI, not a doctor!*",
+            "Hello! I'm **Somatic**, your educational health companion. 🩺\n\nClick on a body part on the 3D model, select a pain level from 1 to 10, then tell me your symptoms using the microphone or type them below.\n\n*Remember: I'm an AI, not a doctor!*",
           type: 'text',
         },
       ]);
     }
   }, [isAgreed]);
-
-  const startListening = useCallback(() => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'bot',
-          content:
-            'Speech recognition is not supported in your browser. Please type your symptoms instead.',
-          type: 'error',
-        },
-      ]);
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => setIsListening(true);
-
-    recognition.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const t = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += t;
-        } else {
-          interimTranscript += t;
-        }
-      }
-      setTranscript(finalTranscript || interimTranscript);
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-  }, []);
-
-  const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    setIsListening(false);
-  }, []);
 
   const speakText = useCallback(
     (text) => {
@@ -128,6 +83,88 @@ export default function FloatingBot() {
     [isMuted]
   );
 
+  const analyzeSymptoms = useCallback(
+    async (symptoms) => {
+      if (!symptoms || symptoms.length === 0) return;
+
+      setIsLoading(true);
+
+      const symptomSummary = symptoms
+        .map((symptom, index) => {
+          const description = symptom.description
+            ? `, description: ${symptom.description}`
+            : '';
+          return `${index + 1}. ${symptom.bodyPart} - pain ${symptom.painLevel}/10${description}`;
+        })
+        .join('\n');
+
+      const prompt = `You are 'Somatic', an educational health companion. The user has saved these symptoms:\n${symptomSummary}\nProvide a short, educational summary of what might cause these symptoms, and 2-4 general wellness tips. You MUST output strictly as a JSON object with keys: 'educational_summary', 'wellness_tips' (array), and 'disclaimer'. You are NOT a doctor. Ensure the disclaimer explicitly states you are an AI and they must see a medical professional.`;
+
+      try {
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const result = await model.generateContent(prompt);
+        const response = result.response;
+        const text = response.text();
+
+        let parsed;
+        try {
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsed = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error('No JSON found');
+          }
+        } catch (parseErr) {
+          parsed = {
+            educational_summary: text,
+            wellness_tips: [],
+            disclaimer:
+              'I am an AI and not a medical professional. Please consult a doctor.',
+          };
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'user',
+            content: `Saved symptoms:\n${symptomSummary}`,
+            type: 'text',
+          },
+          {
+            role: 'bot',
+            content: parsed,
+            type: 'health_response',
+          },
+        ]);
+
+        const speechText = `${parsed.educational_summary}. Here are some wellness tips: ${parsed.wellness_tips?.join('. ') || ''}. ${parsed.disclaimer}`;
+        speakText(speechText);
+        setSavedSymptoms([]);
+        setAnalysisRequest(null);
+      } catch (error) {
+        console.error('Gemini API error:', error);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'bot',
+            content:
+              'I encountered an issue connecting to my AI backend. Please try again shortly.',
+            type: 'error',
+          },
+        ]);
+      }
+
+      setIsLoading(false);
+    },
+    [setAnalysisRequest, setSavedSymptoms, speakText]
+  );
+
+  useEffect(() => {
+    if (analysisRequest?.symptoms?.length) {
+      analyzeSymptoms(analysisRequest.symptoms);
+    }
+  }, [analysisRequest, analyzeSymptoms]);
+
   const toggleMute = () => {
     if (isSpeaking) {
       synthRef.current.cancel();
@@ -141,15 +178,16 @@ export default function FloatingBot() {
       if (!userText.trim()) return;
 
       const bodyPart = selectedBodyPart || 'unspecified area';
+      const painContext = painLevel ? ` Pain level: ${painLevel}/10.` : '';
 
       setMessages((prev) => [
         ...prev,
         { role: 'user', content: userText, type: 'text' },
       ]);
-      setTranscript('');
+      setIssueDescription('');
       setIsLoading(true);
 
-      const prompt = `You are 'Somatic', an educational health companion. The user clicked their ${bodyPart} and said: "${userText}". Provide a short, educational summary of what might cause this discomfort, and 2 general wellness tips. You MUST output strictly as a JSON object with keys: 'educational_summary', 'wellness_tips' (array), and 'disclaimer'. You are NOT a doctor. Ensure the disclaimer explicitly states you are an AI and they must see a medical professional.`;
+      const prompt = `You are 'Somatic', an educational health companion. The user clicked their ${bodyPart}.${painContext} They said: "${userText}". Provide a short, educational summary of what might cause this discomfort, and 2 general wellness tips. You MUST output strictly as a JSON object with keys: 'educational_summary', 'wellness_tips' (array), and 'disclaimer'. You are NOT a doctor. Ensure the disclaimer explicitly states you are an AI and they must see a medical professional.`;
 
       try {
         const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
@@ -200,12 +238,12 @@ export default function FloatingBot() {
 
       setIsLoading(false);
     },
-    [selectedBodyPart, speakText]
+    [painLevel, selectedBodyPart, setIssueDescription, speakText]
   );
 
   const handleSend = () => {
-    if (transcript.trim()) {
-      sendMessage(transcript);
+    if (issueDescription.trim()) {
+      sendMessage(issueDescription);
     }
   };
 
@@ -312,6 +350,7 @@ export default function FloatingBot() {
             }}
           >
             {selectedBodyPart}
+            {painLevel ? ` • ${painLevel}/10` : ''}
           </motion.div>
         )}
       </motion.div>
@@ -388,7 +427,7 @@ export default function FloatingBot() {
                     }}
                   >
                     {selectedBodyPart
-                      ? `Analyzing: ${selectedBodyPart}`
+                      ? `Analyzing: ${selectedBodyPart}${painLevel ? ` • ${painLevel}/10` : ''}`
                       : 'Click a body part to start'}
                   </p>
                 </div>
@@ -563,8 +602,8 @@ export default function FloatingBot() {
 
               <input
                 type="text"
-                value={transcript}
-                onChange={(e) => setTranscript(e.target.value)}
+                value={issueDescription}
+                onChange={(e) => setIssueDescription(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
                   selectedBodyPart
@@ -588,25 +627,25 @@ export default function FloatingBot() {
               <button
                 id="send-button"
                 onClick={handleSend}
-                disabled={!transcript.trim() || isLoading}
+                disabled={!issueDescription.trim() || isLoading}
                 style={{
                   width: 38,
                   height: 38,
                   borderRadius: '50%',
                   border: 'none',
                   background:
-                    transcript.trim() && !isLoading
+                    issueDescription.trim() && !isLoading
                       ? 'linear-gradient(135deg, #8b5cf6, #10b981)'
                       : 'rgba(255,255,255,0.05)',
                   color: 'white',
                   cursor:
-                    transcript.trim() && !isLoading ? 'pointer' : 'default',
+                    issueDescription.trim() && !isLoading ? 'pointer' : 'default',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
                   transition: 'all 0.2s',
-                  opacity: transcript.trim() && !isLoading ? 1 : 0.3,
+                  opacity: issueDescription.trim() && !isLoading ? 1 : 0.3,
                 }}
               >
                 <Send size={16} />

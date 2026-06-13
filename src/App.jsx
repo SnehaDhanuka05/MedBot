@@ -2,7 +2,7 @@ import { useAppContext } from './context/AppContext';
 import BodyCanvas from './components/BodyCanvas';
 import FloatingBot from './components/FloatingBot';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Users, Info, HeartPulse } from 'lucide-react';
+import { Shield, Users, Info, HeartPulse, Mic, MicOff } from 'lucide-react';
 
 function ConsentModal() {
   const { setIsAgreed } = useAppContext();
@@ -380,7 +380,21 @@ function Footer() {
 }
 
 function MainInterface() {
-  const { selectedBodyPart } = useAppContext();
+  const {
+    selectedBodyPart,
+    painLevel,
+    setPainLevel,
+    issueDescription,
+    savedSymptoms,
+    saveCurrentSymptom,
+    startNewSymptom,
+    requestAnalysis,
+    isListening,
+    startListening,
+    stopListening,
+  } = useAppContext();
+
+  const painLevels = Array.from({ length: 10 }, (_, index) => index + 1);
 
   return (
     <div className="w-full h-full">
@@ -388,51 +402,294 @@ function MainInterface() {
 
       {/* Selected body part indicator */}
       <AnimatePresence>
-        {selectedBodyPart && (
+        {(selectedBodyPart || savedSymptoms.length > 0) && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             className="fixed z-10"
             style={{
-              top: 80,
+              top: 76,
               left: '50%',
               transform: 'translateX(-50%)',
-              background: 'rgba(15, 10, 30, 0.7)',
-              backdropFilter: 'blur(16px)',
-              WebkitBackdropFilter: 'blur(16px)',
+              width: 'min(92vw, 640px)',
+              background: 'rgba(15, 10, 30, 0.72)',
+              backdropFilter: 'blur(18px)',
+              WebkitBackdropFilter: 'blur(18px)',
               border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: 14,
-              padding: '8px 20px',
+              borderRadius: 18,
+              padding: '14px 16px',
               display: 'flex',
-              alignItems: 'center',
-              gap: 8,
+              flexDirection: 'column',
+              gap: 12,
               boxShadow: '0 8px 25px rgba(0,0,0,0.3)',
             }}
           >
             <div
               style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: '#34d399',
-                boxShadow: '0 0 8px rgba(52, 211, 153, 0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
               }}
             />
-            <span
+            <div
               style={{
-                color: 'rgba(255,255,255,0.8)',
-                fontSize: 13,
-                fontWeight: 500,
-                fontFamily: 'Inter, sans-serif',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
               }}
             >
-              Selected:{' '}
-              <span style={{ color: '#a78bfa', fontWeight: 600 }}>
-                {selectedBodyPart.charAt(0).toUpperCase() +
-                  selectedBodyPart.slice(1)}
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  color: 'rgba(255,255,255,0.82)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: '#34d399',
+                    boxShadow: '0 0 8px rgba(52, 211, 153, 0.5)',
+                    flexShrink: 0,
+                  }}
+                />
+                {selectedBodyPart ? 'Selected body part:' : 'Saved symptoms'}
+                {selectedBodyPart ? (
+                  <span style={{ color: '#a78bfa' }}>
+                    {selectedBodyPart.charAt(0).toUpperCase() +
+                      selectedBodyPart.slice(1)}
+                  </span>
+                ) : null}
               </span>
-            </span>
+
+              {selectedBodyPart && (
+                <button
+                  onClick={isListening ? stopListening : startListening}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 999,
+                    padding: '8px 12px',
+                    background: isListening
+                      ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(249, 115, 22, 0.9))'
+                      : 'rgba(255,255,255,0.06)',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  {isListening ? <MicOff size={14} /> : <Mic size={14} />}
+                  {isListening ? 'Stop speaking' : 'Describe by voice'}
+                </button>
+              )}
+            </div>
+
+            {selectedBodyPart && (
+              <>
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 8,
+                      gap: 8,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: 'rgba(255,255,255,0.72)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        fontFamily: 'Inter, sans-serif',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                      }}
+                    >
+                      Pain level
+                    </span>
+                    <span
+                      style={{
+                        color: '#c4b5fd',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      {painLevel ? `${painLevel}/10 selected` : 'Choose 1 to 10'}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(10, minmax(0, 1fr))',
+                      gap: 6,
+                    }}
+                  >
+                    {painLevels.map((level) => {
+                      const isSelected = painLevel === level;
+
+                      return (
+                        <button
+                          key={level}
+                          onClick={() => setPainLevel(level)}
+                          style={{
+                            minHeight: 38,
+                            borderRadius: 12,
+                            border: isSelected
+                              ? '1px solid rgba(255,255,255,0.25)'
+                              : '1px solid rgba(255,255,255,0.08)',
+                            background: isSelected
+                              ? 'linear-gradient(135deg, #8b5cf6, #10b981)'
+                              : 'rgba(255,255,255,0.05)',
+                            color: 'white',
+                            fontWeight: 700,
+                            fontSize: 13,
+                            fontFamily: 'Inter, sans-serif',
+                            cursor: 'pointer',
+                            boxShadow: isSelected
+                              ? '0 8px 18px rgba(139, 92, 246, 0.35)'
+                              : 'none',
+                          }}
+                        >
+                          {level}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    color: 'rgba(255,255,255,0.62)',
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  {issueDescription
+                    ? 'Your dictated description is ready to save.'
+                    : 'Use the mic button above to describe the issue in your own words.'}
+                </div>
+
+                <button
+                  onClick={saveCurrentSymptom}
+                  disabled={!selectedBodyPart || !painLevel}
+                  style={{
+                    border: 'none',
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    background:
+                      selectedBodyPart && painLevel
+                        ? 'linear-gradient(135deg, #10b981, #8b5cf6)'
+                        : 'rgba(255,255,255,0.05)',
+                    color: 'white',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    fontFamily: 'Inter, sans-serif',
+                    cursor:
+                      selectedBodyPart && painLevel ? 'pointer' : 'not-allowed',
+                    opacity: selectedBodyPart && painLevel ? 1 : 0.45,
+                  }}
+                >
+                  Save symptom
+                </button>
+              </>
+            )}
+
+            {savedSymptoms.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                  }}
+                >
+                  {savedSymptoms.map((symptom, index) => (
+                    <div
+                      key={`${symptom.bodyPart}-${symptom.painLevel}-${index}`}
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: 12,
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        color: 'rgba(255,255,255,0.82)',
+                        fontSize: 12,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      {symptom.bodyPart} • {symptom.painLevel}/10
+                      {symptom.description ? ` • ${symptom.description}` : ''}
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <button
+                    onClick={startNewSymptom}
+                    style={{
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: 12,
+                      padding: '10px 14px',
+                      background: 'rgba(255,255,255,0.05)',
+                      color: 'white',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      fontFamily: 'Inter, sans-serif',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Add more symptoms
+                  </button>
+                  <button
+                    onClick={requestAnalysis}
+                    style={{
+                      border: 'none',
+                      borderRadius: 12,
+                      padding: '10px 14px',
+                      background: 'linear-gradient(135deg, #6366f1, #10b981)',
+                      color: 'white',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      fontFamily: 'Inter, sans-serif',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Done and analyze
+                  </button>
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
