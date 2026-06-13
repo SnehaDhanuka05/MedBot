@@ -75,6 +75,13 @@ MedBot/
 │   ├── male.glb              # 3D male body model (~950KB)
 │   └── female.glb            # 3D female body model (~870KB)
 │
+├── server/
+│   ├── chatHandler.js        # Shared Gemini logic: validation, prompt, parse
+│   └── index.js              # Express API server for local development
+│
+├── api/
+│   └── chat.js               # Vercel serverless entry (production)
+│
 ├── src/
 │   ├── main.jsx              # App entry point, wraps with AppProvider
 │   ├── App.jsx               # Main layout: Header, Footer, ConsentModal, MainInterface
@@ -85,11 +92,13 @@ MedBot/
 │   │
 │   └── components/
 │       ├── BodyCanvas.jsx    # Three.js canvas, model loading, auto-scaling, hitboxes
-│       └── FloatingBot.jsx   # AI chat panel, voice I/O, Gemini API integration
+│       └── FloatingBot.jsx   # AI chat panel, voice I/O, /api/chat integration
 │
-├── .env                      # Gemini API key (VITE_GEMINI_API_KEY)
+├── .env                      # Server-only GEMINI_API_KEY (gitignored)
+├── .env.example              # Template for environment variables
 ├── index.html                # HTML entry with Inter font & SEO meta
-├── vite.config.js            # Vite + React + Tailwind plugins
+├── vite.config.js            # Vite + React + Tailwind + /api dev proxy
+├── vercel.json               # Vercel deploy config (static + serverless API)
 ├── package.json              # Dependencies and scripts
 └── README.md                 # This file
 ```
@@ -114,11 +123,27 @@ cd MedBot
 # 2. Install dependencies
 npm install
 
-# 3. Start the development server
+# 3. Copy environment template and add your Gemini API key
+cp .env.example .env
+# Edit .env and set GEMINI_API_KEY=your_key_here
+
+# 4. Start the full stack (API server + Vite dev server)
+npm run dev:all
+```
+
+The app will open at `http://localhost:5173/` (or the next available port). The Vite dev server proxies `/api/*` requests to the Express server on port 3001.
+
+**Frontend only** (no AI chat — useful for UI/3D work):
+
+```bash
 npm run dev
 ```
 
-The app will open at `http://localhost:5173/` (or the next available port).
+**API server only**:
+
+```bash
+npm run server
+```
 
 ### Production Build
 
@@ -133,11 +158,13 @@ npm run preview
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `VITE_GEMINI_API_KEY` | Google Gemini API key | ✅ Yes |
+| `GEMINI_API_KEY` | Google Gemini API key (server-only — never use `VITE_` prefix) | ✅ Yes |
+| `PORT` | Express server port for local dev (default: `3001`) | No |
+| `CORS_ORIGIN` | Allowed origin for local API server (default: `http://localhost:5173`) | No |
 
-The `.env` file is included in this repo for team convenience. In production, **never** commit API keys — use environment secrets instead.
+Copy `.env.example` to `.env` and set your key locally. **Never commit `.env`** — it is gitignored. For production, set `GEMINI_API_KEY` in your Vercel project settings.
 
-To get your own key: [Google AI Studio](https://aistudio.google.com/app/apikey)
+If a key was previously committed or exposed in the browser bundle, **rotate it** in [Google AI Studio](https://aistudio.google.com/app/apikey) before deploying.
 
 ---
 

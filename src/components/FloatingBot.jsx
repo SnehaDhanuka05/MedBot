@@ -12,10 +12,7 @@ import {
   Sparkles,
   AlertTriangle,
 } from 'lucide-react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { useAppContext } from '../context/AppContext';
-
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || '');
 
 export default function FloatingBot() {
   const { isAgreed, selectedBodyPart } = useAppContext();
@@ -149,30 +146,18 @@ export default function FloatingBot() {
       setTranscript('');
       setIsLoading(true);
 
-      const prompt = `You are 'Somatic', an educational health companion. The user clicked their ${bodyPart} and said: "${userText}". Provide a short, educational summary of what might cause this discomfort, and 2 general wellness tips. You MUST output strictly as a JSON object with keys: 'educational_summary', 'wellness_tips' (array), and 'disclaimer'. You are NOT a doctor. Ensure the disclaimer explicitly states you are an AI and they must see a medical professional.`;
-
       try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        const text = response.text();
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bodyPart, userText }),
+        });
 
-        let parsed;
-        try {
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            parsed = JSON.parse(jsonMatch[0]);
-          } else {
-            throw new Error('No JSON found');
-          }
-        } catch (parseErr) {
-          parsed = {
-            educational_summary: text,
-            wellness_tips: [],
-            disclaimer:
-              'I am an AI and not a medical professional. Please consult a doctor.',
-          };
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
         }
+
+        const parsed = await response.json();
 
         const botMessage = {
           role: 'bot',
