@@ -61,7 +61,9 @@
 | **3D Helpers** | @react-three/drei | 10.x | OrbitControls, useGLTF, Html overlays |
 | **Animation** | Framer Motion | 12.x | UI animations and transitions |
 | **Icons** | Lucide React | latest | Consistent icon set |
-| **AI** | @google/generative-ai | latest | Gemini API SDK |
+| **AI** | @google/generative-ai | latest | Gemini API SDK (server-side only) |
+| **Local API** | Express | 5.x | Dev server proxy for `/api/chat` |
+| **Production API** | Vercel Serverless | — | `api/chat.js` in production |
 | **Voice Input** | Web Speech API | native | `SpeechRecognition` / `webkitSpeechRecognition` |
 | **Voice Output** | Web Speech API | native | `SpeechSynthesis` |
 
@@ -250,17 +252,17 @@ Canvas (react-three-fiber)
 
 **Key design decision**: Hitboxes are **dynamically positioned** based on the model's actual bounding box. When the viewport resizes, the model rescales, and hitboxes reposition automatically.
 
-### AI Chat Pipeline — `FloatingBot.jsx`
+### AI Chat Pipeline — `FloatingBot.jsx` + `server/chatHandler.js`
 
 ```
 User Input (voice or text)
     │
     ▼
-Construct Prompt
-    │  "You are 'Somatic'... The user clicked their {bodyPart}
-    │   and said: {text}. Output strictly as JSON..."
+POST /api/chat
+    │  { bodyPart, userText }
     ▼
-GoogleGenerativeAI SDK
+server/chatHandler.js
+    │  Validate input → build prompt
     │  model: 'gemini-2.0-flash'
     ▼
 Parse JSON from response
@@ -273,6 +275,8 @@ Render HealthResponseCard
     ▼
 SpeechSynthesis.speak()
 ```
+
+**Local dev**: Vite proxies `/api` → Express on `:3001`. **Production**: Vercel serverless function at `api/chat.js`.
 
 ---
 
@@ -306,7 +310,7 @@ Key internals:
 | Position animation | Framer Motion variants: `center` → `corner` |
 | Speech input | `webkitSpeechRecognition` with interim results |
 | Speech output | `SpeechSynthesis` with preferred voice selection |
-| AI backend | `@google/generative-ai` → `gemini-2.0-flash` |
+| AI backend | `fetch('/api/chat')` → `server/chatHandler.js` → `gemini-2.0-flash` |
 | Response display | `HealthResponseCard` sub-component |
 
 ---
@@ -332,6 +336,29 @@ The app loads two GLB files from the `public/` directory:
 ---
 
 ## 🤖 API Integration
+
+### Endpoint — `POST /api/chat`
+
+**Request body:**
+
+```json
+{
+  "bodyPart": "head",
+  "userText": "I have a dull headache behind my eyes"
+}
+```
+
+**Response:**
+
+```json
+{
+  "educational_summary": "...",
+  "wellness_tips": ["...", "..."],
+  "disclaimer": "..."
+}
+```
+
+The prompt is constructed server-side in [`server/chatHandler.js`](server/chatHandler.js). The browser never sees the Gemini API key.
 
 ### Gemini Prompt Template
 
@@ -369,8 +396,7 @@ you are an AI and they must see a medical professional.
 |-------|---------|
 | **Speech API** | Only works in Chromium-based browsers (Chrome, Edge). Firefox/Safari have limited support. |
 | **Hitbox alignment** | Hitboxes are positioned based on bounding-box math. Different model geometries may need tuning. |
-| **API Key in .env** | Included for team convenience. **Must be rotated before any public deployment.** |
-| **No backend** | All API calls go directly from the browser. Rate limiting depends on Gemini API quotas. |
+| **Public API endpoint** | `/api/chat` has basic rate limiting but no authentication yet. Monitor Gemini quota usage. |
 | **No chat history persistence** | Messages are lost on page refresh. |
 
 ---
@@ -380,7 +406,7 @@ you are an AI and they must see a medical professional.
 - [ ] Add more body regions (arms, legs, back, neck)
 - [ ] Implement chat history persistence (localStorage or backend)
 - [ ] Add user authentication
-- [ ] Build a proper backend to proxy Gemini API calls (hide API key)
+- [x] Build a proper backend to proxy Gemini API calls (hide API key)
 - [ ] Add symptom severity selector (mild / moderate / severe)
 - [ ] Implement "Meet the Team" and "About Us" page content
 - [ ] Add dark/light theme toggle
@@ -395,7 +421,7 @@ you are an AI and they must see a medical professional.
 
 1. Create a new branch: `git checkout -b feature/your-feature`
 2. Make your changes
-3. Test locally: `npm run dev`
+3. Test locally: `npm run dev:all`
 4. Commit: `git commit -m "feat: your feature description"`
 5. Push: `git push origin feature/your-feature`
 6. Open a Pull Request
